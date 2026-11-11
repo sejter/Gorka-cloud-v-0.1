@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Gorka-cloud — Облачное хранилище</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    .drop-active { border-color: #0061FE !important; background-color: #EFF6FF !important; }
+  </style>
+</head>
+<body class="bg-[#F7F9FA] text-[#1E1919] min-h-screen flex flex-col md:flex-row">
+
+  <!-- Экран ввода PIN-кода -->
+  <div id="authModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+      <div class="w-12 h-12 rounded-xl bg-[#0061FE]/10 text-[#0061FE] flex items-center justify-center mx-auto mb-3">
+        <svg class="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+        </svg>
+      </div>
+      <h2 class="text-lg font-bold mb-1">Вход в Gorka-cloud</h2>
+      <p class="text-xs text-slate-500 mb-4">Введите PIN-код администратора</p>
+      <input id="pinInput" type="password" placeholder="PIN-код (по умолч. 1234)"
+        class="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-center tracking-widest mb-3 focus:outline-none focus:border-[#0061FE]" />
+      <button onclick="savePin()" class="w-full bg-[#0061FE] hover:bg-[#0051D5] text-white font-medium py-2.5 rounded-lg transition">
+        Войти
+      </button>
+    </div>
+  </div>
+
+  <!-- Боковая панель (Dropbox style) -->
+  <aside class="w-full md:w-64 bg-white border-b md:border-b-0 md:border-r border-slate-200 p-5 flex flex-col justify-between shrink-0">
+    <div>
+      <!-- Логотип Gorka-cloud -->
+      <div class="flex items-center gap-3 mb-8">
+        <div class="w-10 h-10 rounded-xl bg-[#0061FE] flex items-center justify-center text-white shadow-sm">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none">
+            <path d="M6.5 19H18.5C20.433 19 22 17.433 22 15.5C22 13.736 20.696 12.277 19.002 12.035C18.442 8.614 15.479 6 11.9 6C7.924 6 4.7 9.224 4.7 13.2C4.7 13.388 4.707 13.575 4.722 13.76C3.167 14.33 2 15.818 2 17.571C2 18.36 2.64 19 3.429 19H6.5Z" fill="white" fill-opacity="0.25"/>
+            <path d="M5 19L10.5 10L14.5 16L17 12.5L21 19H5Z" fill="white"/>
+          </svg>
+        </div>
+        <div>
+          <span class="font-bold text-lg tracking-tight block leading-none">Gorka-cloud</span>
+          <span class="text-[11px] text-slate-400">Private WireGuard Cloud</span>
+        </div>
+      </div>
+
+      <!-- Навигация -->
+      <nav class="space-y-1">
+        <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[#0061FE]/10 text-[#0061FE] font-medium text-sm">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+          </svg>
+          Все картинки
+        </a>
+      </nav>
+    </div>
+
+    <!-- Индикатор диска -->
+    <div class="mt-6 pt-5 border-t border-slate-100">
+      <div class="flex justify-between text-xs text-slate-600 mb-1.5">
+        <span>Хранилище</span>
+        <span id="storageText">0 МБ из 15 ГБ</span>
+      </div>
+      <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div id="storageBar" class="h-full bg-[#0061FE] w-0 transition-all duration-300"></div>
+      </div>
+      <div class="mt-4">
+        <label class="block text-[11px] text-slate-400 mb-1">Хост для QR-кодов (WireGuard IP):</label>
+        <input id="baseUrlInput" type="text" onchange="saveBaseUrl()"
+          class="w-full text-xs px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-md text-slate-700 focus:outline-none focus:border-[#0061FE]" />
+      </div>
+    </div>
+  </aside>
+
+  <!-- Основной контент -->
+  <main class="flex-1 p-5 md:p-8 max-w-6xl mx-auto w-full">
+    <!-- Верхняя панель -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      <div class="relative flex-1 max-w-md">
+        <input id="searchInput" type="text" oninput="renderImages()" placeholder="Поиск по названию файла..."
+          class="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-[#0061FE] shadow-sm" />
+        <svg class="w-4 h-4 text-slate-400 absolute left-3.5 top-3" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+        </svg>
+      </div>
+
+      <label class="cursor-pointer inline-flex items-center justify-center gap-2 bg-[#0061FE] hover:bg-[#0051D5] text-white font-medium text-sm px-5 py-2.5 rounded-xl shadow-sm transition">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Загрузить картинку
+        <input id="fileInput" type="file" accept="image/*" multiple class="hidden" onchange="handleFiles(this.files)" />
+      </label>
+    </div>
+
+    <!-- Зона Drag & Drop -->
+    <div id="dropZone"
+      class="border-2 border-dashed border-slate-300 bg-white rounded-2xl p-6 text-center mb-8 transition cursor-pointer"
+      onclick="document.getElementById('fileInput').click()">
+      <p class="text-sm font-medium text-slate-700">Перетащите картинки сюда или нажмите для выбора с ПК</p>
+      <p class="text-xs text-slate-400 mt-1">Поддерживаются JPG, PNG, WEBP, GIF, SVG, HEIC до 50 МБ</p>
+      <div id="uploadStatus" class="text-xs text-[#0061FE] font-medium mt-2 hidden">Загрузка...</div>
+    </div>
+
+    <!-- Сетка картинок -->
+    <div id="imagesGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"></div>
+
+    <!-- Пустое состояние -->
+    <div id="emptyState" class="hidden text-center py-16">
+      <p class="text-slate-400 text-sm">В облаке пока нет загруженных картинок</p>
+    </div>
+  </main>
+
+  <!-- Модальное окно с QR-кодом -->
+  <div id="qrModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4" onclick="closeQrModal(event)">
+    <div class="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-base">QR-код для телефона</h3>
+        <button onclick="closeQrModal()" class="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+      </div>
+      <p id="qrFileName" class="text-xs text-slate-500 truncate mb-4"></p>
+      <div id="qrContainer" class="flex justify-center p-4 bg-slate-50 rounded-xl border border-slate-100 mb-4"></div>
+      <p class="text-[11px] text-slate-400 mb-3">Включите WireGuard на телефоне и отсканируйте код камерой</p>
+      <input id="qrLinkInput" type="text" readonly class="w-full text-xs bg-slate-100 px-3 py-2 rounded-lg text-slate-600 mb-3 text-center" />
+      <div class="flex gap-2">
+        <button onclick="copyQrLink()" id="copyBtn" class="flex-1 bg-[#0061FE] hover:bg-[#0051D5] text-white text-xs font-medium py-2.5 rounded-lg transition">
+          Скопировать ссылку
+        </button>
+        <a id="openPreviewBtn" href="#" target="_blank" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition">
+          Открыть
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allImages = [];
+    const baseUrlInput = document.getElementById('baseUrlInput');
+    baseUrlInput.value = localStorage.getItem('gorka_base_url') || window.location.origin;
+
+    function saveBaseUrl() {
+      localStorage.setItem('gorka_base_url', baseUrlInput.value.replace(/\/+$/, ''));
+    }
+
+    function getPin() {
+      return localStorage.getItem('gorka_pin') || '1234';
+    }
+
+    function savePin() {
+      const val = document.getElementById('pinInput').value.trim();
+      localStorage.setItem('gorka_pin', val);
+      document.getElementById('authModal').classList.add('hidden');
+      loadImages();
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Б';
+      const k = 1024, sizes = ['Б', 'КБ', 'МБ', 'ГБ'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+    }
+
+    async function loadImages() {
+      const res = await fetch('/api/images', { headers: { 'X-Admin-Pin': getPin() } });
+      if (res.status === 401) {
+        document.getElementById('authModal').classList.remove('hidden');
+        return;
+      }
+      const data = await res.json();
+      allImages = data.images;
+      const pct = Math.min(100, (data.used_bytes / data.quota_bytes) * 100);
+      document.getElementById('storageBar').style.width = pct + '%';
+      document.getElementById('storageText').textContent = `${formatBytes(data.used_bytes)} из ${formatBytes(data.quota_bytes)}`;
+      renderImages();
+    }
+
+    function renderImages() {
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      const grid = document.getElementById('imagesGrid');
+      const empty = document.getElementById('emptyState');
+      const filtered = allImages.filter(img => img.orig_name.toLowerCase().includes(query));
+
+      grid.innerHTML = '';
+      if (filtered.length === 0) {
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+
+      filtered.forEach(img => {
+        const card = document.createElement('div');
+        card.className = 'bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition flex flex-col';
+        card.innerHTML = `
+          <div class="h-44 bg-slate-100 relative overflow-hidden group">
+            <img src="/raw/${img.stored_name}" alt="${img.orig_name}" loading="lazy"
+              class="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+          </div>
+          <div class="p-4 flex-1 flex flex-col justify-between">
+            <div>
+              <p class="font-medium text-sm truncate" title="${img.orig_name}">${img.orig_name}</p>
+              <p class="text-[11px] text-slate-400 mt-0.5">${formatBytes(img.size)} • ${img.created_at}</p>
+            </div>
+            <div class="flex items-center gap-2 mt-4 pt-3 border-t border-slate-100">
+              <button onclick="openQrModal('${img.id}', '${img.orig_name.replace(/'/g, "\\'")}')"
+                class="flex-1 bg-[#0061FE]/10 hover:bg-[#0061FE] text-[#0061FE] hover:text-white text-xs font-medium py-2 rounded-lg transition flex items-center justify-center gap-1.5">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3h-3zM18 18h3v3h-3z"/>
+                </svg>
+                QR-код
+              </button>
+              <a href="/api/download/${img.id}" class="p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition" title="Скачать">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+                </svg>
+              </a>
+              <button onclick="deleteImage('${img.id}')" class="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Удалить">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    async function handleFiles(files) {
+      if (!files.length) return;
+      const status = document.getElementById('uploadStatus');
+      status.classList.remove('hidden');
+
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append('file', file);
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'X-Admin-Pin': getPin() },
+          body: fd
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          alert(err.detail || 'Ошибка загрузки');
+        }
+      }
+      status.classList.add('hidden');
+      document.getElementById('fileInput').value = '';
+      loadImages();
+    }
+
+    async function deleteImage(id) {
+      if (!confirm('Удалить картинку из облака?')) return;
+      await fetch(`/api/images/${id}`, {
+        method: 'DELETE',
+        headers: { 'X-Admin-Pin': getPin() }
+      });
+      loadImages();
+    }
+
+    function openQrModal(id, name) {
+      const base = baseUrlInput.value.replace(/\/+$/, '');
+      const url = `${base}/v/${id}`;
+      document.getElementById('qrFileName').textContent = name;
+      document.getElementById('qrLinkInput').value = url;
+      document.getElementById('openPreviewBtn').href = `/v/${id}`;
+
+      const container = document.getElementById('qrContainer');
+      container.innerHTML = '';
+      new QRCode(container, {
+        text: url,
+        width: 200,
+        height: 200,
+        colorDark: "#1E1919",
+        colorLight: "#FFFFFF",
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      document.getElementById('qrModal').classList.remove('hidden');
+    }
+
+    function closeQrModal() {
+      document.getElementById('qrModal').classList.add('hidden');
+    }
+
+    function copyQrLink() {
+      const input = document.getElementById('qrLinkInput');
+      navigator.clipboard.writeText(input.value);
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = 'Скопировано!';
+      setTimeout(() => btn.textContent = 'Скопировать ссылку', 1500);
+    }
+
+    // Drag & Drop
+    const dz = document.getElementById('dropZone');
+    ['dragenter', 'dragover'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.add('drop-active'); }));
+    ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, e => { e.preventDefault(); dz.classList.remove('drop-active'); }));
+    dz.addEventListener('drop', e => handleFiles(e.dataTransfer.files));
+
+    loadImages();
+  </script>
+</body>
+</html>
