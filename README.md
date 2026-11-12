@@ -21,3 +21,4 @@ Custom made for Sortyaga gorka
 - Процессор: 2 ядра
 - Wireguard на хосте
 - Белый IP адрес
+- Linux с ядром не старше 6.0
